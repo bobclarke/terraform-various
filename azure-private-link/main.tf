@@ -3,27 +3,22 @@
 //===================================================================
 variable "subscription_id" {
   default = "xyz"
-  type = string 
 }
 
 variable "client_id" {
   default = "xyz"
-  type = string 
 }
 
 variable "client_secret" {
   default = "xyz"
-  type = string 
 }
 
 variable "tenant_id" {
   default = "xyz"
-  type = string 
 }
 
 variable "admin_password" {
   default = "xyz"
-  type = string 
 }
 
 //===================================================================
@@ -70,6 +65,32 @@ resource "azurerm_subnet" "pl-service-subnet" {
 }
 
 //===================================================================
+// NSGs and NSG association
+//===================================================================
+resource "azurerm_network_security_group" "pl-service-nsg" {
+  name                = "pl-service-nsg"
+  location            = azurerm_resource_group.example.location
+  resource_group_name = azurerm_resource_group.example.name
+
+  security_rule {
+    name                       = "all-ports"
+    priority                   = 100
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "22"
+    source_address_prefix      = "80.7.255.151"
+    destination_address_prefix = "*"
+  }
+}
+
+resource "azurerm_subnet_network_security_group_association" "pl-service-nsg-assc" {
+  subnet_id                 = azurerm_subnet.pl-service-subnet.id
+  network_security_group_id = azurerm_network_security_group.pl-service-nsg.id
+}
+
+//===================================================================
 // Load Balancers
 //===================================================================
 resource "azurerm_lb" "pl-service-lb" {
@@ -96,7 +117,7 @@ resource "azurerm_public_ip" "pl-service-lb-pip" {
 }
 
 //===================================================================
-// Backend pools for Load Balancers
+// Backend pools and associations for Load Balancers
 //===================================================================
 resource "azurerm_lb_backend_address_pool" "pl-service-lb-pool" {
   resource_group_name = azurerm_resource_group.example.name
@@ -104,12 +125,25 @@ resource "azurerm_lb_backend_address_pool" "pl-service-lb-pool" {
   name                = "pl-service-lb-pool"
 }
 
+// We can't use an IP based Load Balancer with Private Link
+/*
 resource "azurerm_lb_backend_address_pool_address" "pl-service-lb-pool-addr" {
   name                    = "pl-service-lb-pool-addr"
   backend_address_pool_id = azurerm_lb_backend_address_pool.pl-service-lb-pool.id
   virtual_network_id      = azurerm_virtual_network.pl-service-network.id
   ip_address              = azurerm_network_interface.pl-service-vm-nic.private_ip_address
 }
+*/
+
+// So instead we'll associate it with the VM NIC
+resource "azurerm_network_interface_backend_address_pool_association" "pl-service-lb-pool-assc" {
+  //network_interface_id    = element(azurerm_network_interface.ani-01.*.id,count.index)
+  network_interface_id    = azurerm_network_interface.pl-service-vm-nic.id
+  ip_configuration_name   = "pl-service-vm-nic-config"
+  backend_address_pool_id = azurerm_lb_backend_address_pool.pl-service-lb-pool.id
+}
+
+
 
 //===================================================================
 // Load Balancer Probes
@@ -135,7 +169,6 @@ resource "azurerm_lb_rule" "pl-service-lb-rule" {
   frontend_ip_configuration_name = azurerm_public_ip.pl-service-lb-pip.name
   probe_id                       = azurerm_lb_probe.pl-service-lb-probe.id
 }
-
 
 //===================================================================
 // VMs
@@ -188,57 +221,20 @@ resource "azurerm_network_interface" "pl-service-vm-nic" {
     name                          = "pl-service-vm-nic-config"
     subnet_id                     = azurerm_subnet.pl-service-subnet.id
     private_ip_address_allocation = "Dynamic"
-    public_ip_address_id          = azurerm_public_ip.pl-service-vm-pip.id
+    //public_ip_address_id          = azurerm_public_ip.pl-service-vm-pip.id
   }
 }
 
-
-//===================================================================
-// Pubic IPs for VMs
-//===================================================================
-resource "azurerm_public_ip" "pl-service-vm-pip" {
-  name                = "pl-service-vm-pip"
-  sku                 = "Standard"
-  location            = azurerm_resource_group.example.location
-  resource_group_name = azurerm_resource_group.example.name
-  allocation_method   = "Static"
-}
-
-//===================================================================
-// NSGs
-//===================================================================
-resource "azurerm_network_security_group" "pl-service-nsg" {
-  name                = "pl-service-nsg"
-  location            = azurerm_resource_group.example.location
-  resource_group_name = azurerm_resource_group.example.name
-
-  security_rule {
-    name                       = "all-ports"
-    priority                   = 100
-    direction                  = "Inbound"
-    access                     = "Allow"
-    protocol                   = "Tcp"
-    source_port_range          = "*"
-    destination_port_range     = "*"
-    source_address_prefix      = "*"
-    destination_address_prefix = "*"
-  }
-}
-
-resource "azurerm_subnet_network_security_group_association" "pl-service-nsg-assc" {
-  subnet_id                 = azurerm_subnet.pl-service-subnet.id
-  network_security_group_id = azurerm_network_security_group.pl-service-nsg.id
-}
-
-
-/*
 //===================================================================
 // PrivateLink Service
 //===================================================================
-resource "azurerm_private_link_service" "example" {
-  name                = "example-privatelink"
+resource "azurerm_private_link_service" "pl-service" {
+  name                = "pl-service"
   location            = azurerm_resource_group.example.location
   resource_group_name = azurerm_resource_group.example.name
+
+  //auto_approval_subscription_ids              = ["00000000-0000-0000-0000-000000000000"]
+  //visibility_subscription_ids                 = ["00000000-0000-0000-0000-000000000000"]
 
   nat_ip_configuration {
     name      = azurerm_public_ip.pl-service-lb-pip.name
@@ -247,10 +243,46 @@ resource "azurerm_private_link_service" "example" {
   }
 
   load_balancer_frontend_ip_configuration_ids = [
-    azurerm_lb.example.frontend_ip_configuration.0.id,
+    azurerm_lb.pl-service-lb.frontend_ip_configuration.0.id,
   ]
 }
 
+
+//===================================================================
+// Outputs
+//===================================================================
+output "pl-service-lb-pip" {
+  value = azurerm_public_ip.pl-service-lb-pip.ip_address
+}
+
+
+
+
+
+
+
+/*
+resource "azurerm_private_link_service" "pl-service" {
+  name                = "pl-service"
+  resource_group_name = azurerm_resource_group.example.name
+  location            = azurerm_resource_group.example.location
+
+  //auto_approval_subscription_ids              = ["00000000-0000-0000-0000-000000000000"]
+  //visibility_subscription_ids                 = ["00000000-0000-0000-0000-000000000000"]
+  
+  load_balancer_frontend_ip_configuration_ids = [azurerm_lb.pl-service-lb.frontend_ip_configuration.id]
+
+  nat_ip_configuration {
+    name                       = "primary"
+    private_ip_address         = "10.5.1.17"
+    private_ip_address_version = "IPv4"
+    subnet_id                  = azurerm_subnet.example.id
+    primary                    = true
+  }
+}
+*/
+
+/*
 //===================================================================
 // PrivateEndpoint
 //===================================================================
@@ -267,20 +299,38 @@ resource "azurerm_private_endpoint" "example" {
     is_manual_connection           = false
   }
 }
-
 */
 
-//===================================================================
-// Outputs
-//===================================================================
-output "pl-service-lb-pip" {
-  value = azurerm_public_ip.pl-service-lb-pip.ip_address
-}
 
-output "pl-service-vm-pip" {
-  value = azurerm_public_ip.pl-service-vm-pip.ip_address
+
+//===================================================================
+// Pubic IPs for VMs
+//===================================================================
+/*
+resource "azurerm_public_ip" "pl-service-vm-pip" {
+  name                = "pl-service-vm-pip"
+  sku                 = "Standard"
+  location            = azurerm_resource_group.example.location
+  resource_group_name = azurerm_resource_group.example.name
+  allocation_method   = "Static"
 }
+*/
 
 
 //value = azurerm_private_endpoint.example.0.private_service_connection.0.private_ip_address
 
+
+//output "pl-service-vm-pip" {
+//  value = azurerm_public_ip.pl-service-vm-pip.ip_address
+//}
+
+
+
+//===================================================================
+// Notes
+//===================================================================
+// load_balancer_frontend_ip_configuration_ids...
+// A list of Frontend IP Configuration ID's from a Standard Load Balancer, 
+// where traffic from the Private Link Service should be routed. 
+// You can use Load Balancer Rules to direct this traffic to appropriate backend 
+// pools where your applications are running.
