@@ -1,8 +1,29 @@
 //===================================================================
 // vars 
 //===================================================================
+variable "subscription_id" {
+  default = "xyz"
+  type = string 
+}
+
+variable "client_id" {
+  default = "xyz"
+  type = string 
+}
+
 variable "client_secret" {
   default = "xyz"
+  type = string 
+}
+
+variable "tenant_id" {
+  default = "xyz"
+  type = string 
+}
+
+variable "admin_password" {
+  default = "xyz"
+  type = string 
 }
 
 //===================================================================
@@ -10,10 +31,10 @@ variable "client_secret" {
 //===================================================================
 provider "azurerm" {
   version = ">= 2.41.0"
-  subscription_id = "968853fd-f3eb-4840-a1ee-536cfdea8092"
-  client_id       = "fbcccf05-4777-46b2-9f78-a9e7927c21e0"
+  subscription_id = var.subscription_id
+  client_id       = var.client_id
   client_secret   = var.client_secret
-  tenant_id       = "6e8992ec-76d5-4ea5-8eae-b0c5e558749a"
+  tenant_id       = var.tenant_id
   features {
   }
 }
@@ -144,7 +165,7 @@ resource "azurerm_virtual_machine" "pl-service-vm" {
   os_profile {
     computer_name  = "pl-service-vm"
     admin_username = "pluser"
-    admin_password = "q1ECCGdZza8"
+    admin_password = var.admin_password
   }
   os_profile_linux_config {
     disable_password_authentication = false
