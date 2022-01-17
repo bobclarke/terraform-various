@@ -118,8 +118,8 @@ resource "azurerm_network_security_group" "pl-endpoint-nsg" {
     access                     = "Allow"
     protocol                   = "Tcp"
     source_port_range          = "*"
-    destination_port_range     = "22"
-    source_address_prefix      = "80.7.255.151"
+    destination_port_range     = "*"
+    source_address_prefix      = "*"
     destination_address_prefix = "*"
   }
 }
@@ -190,20 +190,29 @@ resource "azurerm_lb_backend_address_pool" "pl-endpoint-lb-pool" {
   name                = "pl-endpoint-lb-pool"
 }
 
-// Associate the pool with the VM NIC
+// For the service LB Associate the pool with the VM NIC
 resource "azurerm_network_interface_backend_address_pool_association" "pl-service-lb-pool-assc" {
   network_interface_id    = azurerm_network_interface.pl-service-vm-nic.id
   ip_configuration_name   = "pl-service-vm-nic-config"
   backend_address_pool_id = azurerm_lb_backend_address_pool.pl-service-lb-pool.id
 }
 
+// For the endpoint LB Associate the pool with private_endpoint ip address
+resource "azurerm_lb_backend_address_pool_address" "pl-service-lb-pool-addr" {
+  name                    = "pl-service-lb-pool-addr"
+  backend_address_pool_id = azurerm_lb_backend_address_pool.pl-endpoint-lb-pool.id
+  virtual_network_id      = azurerm_virtual_network.pl-endpoint-network.id
+  ip_address              = tostring(azurerm_private_endpoint.pl-endpoint.private_service_connection.0.private_ip_address)
+}
+
+
+/*
 resource "azurerm_network_interface_backend_address_pool_association" "pl-endpoint-lb-pool-assc" {
   network_interface_id    = azurerm_network_interface.pl-endpoint-vm-nic.id
   ip_configuration_name   = "pl-endpoint-vm-nic-config"
   backend_address_pool_id = azurerm_lb_backend_address_pool.pl-endpoint-lb-pool.id
 }
-
-
+*/
 
 //===================================================================
 // Load Balancer Probes
@@ -349,8 +358,19 @@ resource "azurerm_network_interface" "pl-endpoint-vm-nic" {
     name                          = "pl-endpoint-vm-nic-config"
     subnet_id                     = azurerm_subnet.pl-endpoint-subnet.id
     private_ip_address_allocation = "Dynamic"
-    //public_ip_address_id          = azurerm_public_ip.pl-endpoint-vm-pip.id
+    public_ip_address_id          = azurerm_public_ip.pl-endpoint-vm-pip.id
   }
+}
+
+//===================================================================
+// Pubic IPs for VM in endpoint subnet (for testing only)
+//===================================================================
+resource "azurerm_public_ip" "pl-endpoint-vm-pip" {
+  name                = "pl-endpoint-vm-pip"
+  sku                 = "Standard"
+  location            = azurerm_resource_group.example.location
+  resource_group_name = azurerm_resource_group.example.name
+  allocation_method   = "Static"
 }
 
 //===================================================================
@@ -379,7 +399,6 @@ resource "azurerm_private_link_service" "pl-service" {
 // PrivateEndpoint
 //===================================================================
 resource "azurerm_private_endpoint" "pl-endpoint" {
-  count		            = 1
   name                = "pl-endpoint"
   location            = azurerm_resource_group.example.location
   resource_group_name = azurerm_resource_group.example.name
@@ -409,15 +428,17 @@ output "pl-service-id" {
 }
 
 output "pl-endpoint-ip" {
-  value = "azurerm_private_endpoint.pl-endpoint.private_service_connection.0.private_ip_address"
+  value = azurerm_private_endpoint.pl-endpoint.private_service_connection.0.private_ip_address
+}
+
+output "pl-endpoint-nic" {
+  value = azurerm_private_endpoint.pl-endpoint
 }
 
 
-
-
-
-
-
+output "pl-endpoint-test-vm" {
+  value = azurerm_public_ip.pl-endpoint-vm-pip.ip_address
+}
 
 
 
