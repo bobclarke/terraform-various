@@ -133,39 +133,33 @@ resource "azurerm_subnet_network_security_group_association" "pl-endpoint-nsg-as
 // Load Balancers
 //===================================================================
 resource "azurerm_lb" "pl-service-lb" {
-  name                = "pl-service-lb"
-  sku                 = "Standard"
-  location            = azurerm_resource_group.example.location
-  resource_group_name = azurerm_resource_group.example.name
+  name                              = "pl-service-lb"
+  sku                               = "Standard"
+  location                          = azurerm_resource_group.example.location
+  resource_group_name               = azurerm_resource_group.example.name
 
+  // Public frontend_ip_configuration
   frontend_ip_configuration {
-    name                 = azurerm_public_ip.pl-service-lb-pip.name
-    public_ip_address_id = azurerm_public_ip.pl-service-lb-pip.id
+    name                            = "pl-service-lb-frontend-ip-configuration"
+    public_ip_address_id            = azurerm_public_ip.pl-service-lb-pip.id
+    private_ip_address_version      = "IPv4"
   }
 }
 
 resource "azurerm_lb" "pl-endpoint-lb" {
-  name                = "pl-endpoint-lb"
-  sku                 = "Standard"
-  location            = azurerm_resource_group.example.location
-  resource_group_name = azurerm_resource_group.example.name
+  name                              = "pl-endpoint-lb"
+  sku                               = "Standard"
+  location                          = azurerm_resource_group.example.location
+  resource_group_name               = azurerm_resource_group.example.name
 
-  
+  // Private frontend_ip_configuration
   frontend_ip_configuration {
-    name                 = azurerm_public_ip.pl-endpoint-lb-pip.name
-    public_ip_address_id = azurerm_public_ip.pl-endpoint-lb-pip.id
-  }
-
-
-/*
-  frontend_ip_configuration {
-    name                            = azurerm_public_ip.pl-endpoint-lb-pip.name
+    name                            = "pl-endpoint-lb-frontend-ip-configuration"
     private_ip_address_allocation   = "Static"
     private_ip_address_version      = "IPv4"
     private_ip_address              = "10.0.1.6"
     subnet_id                       = azurerm_subnet.pl-endpoint-subnet.id
   }
-*/
 }
 
 
@@ -180,6 +174,7 @@ resource "azurerm_public_ip" "pl-service-lb-pip" {
   allocation_method   = "Static"
 }
 
+/*
 resource "azurerm_public_ip" "pl-endpoint-lb-pip" {
   name                = "pl-endpoint-lb-pip"
   sku                 = "Standard"
@@ -187,18 +182,19 @@ resource "azurerm_public_ip" "pl-endpoint-lb-pip" {
   resource_group_name = azurerm_resource_group.example.name
   allocation_method   = "Static"
 }
+*/
 
 //===================================================================
 // Backend pools and associations for Load Balancers
 //===================================================================
 resource "azurerm_lb_backend_address_pool" "pl-service-lb-pool" {
-  resource_group_name = azurerm_resource_group.example.name
+  //resource_group_name = azurerm_resource_group.example.name
   loadbalancer_id     = azurerm_lb.pl-service-lb.id
   name                = "pl-service-lb-pool"
 }
 
 resource "azurerm_lb_backend_address_pool" "pl-endpoint-lb-pool" {
-  resource_group_name = azurerm_resource_group.example.name
+  //resource_group_name = azurerm_resource_group.example.name
   loadbalancer_id     = azurerm_lb.pl-endpoint-lb.id
   name                = "pl-endpoint-lb-pool"
 }
@@ -254,7 +250,8 @@ resource "azurerm_lb_rule" "pl-service-lb-rule" {
   frontend_port                  = "22"
   backend_port                   = "22"
   backend_address_pool_id        = azurerm_lb_backend_address_pool.pl-service-lb-pool.id
-  frontend_ip_configuration_name = azurerm_public_ip.pl-service-lb-pip.name
+  //frontend_ip_configuration_name = azurerm_public_ip.pl-service-lb-pip.name
+  frontend_ip_configuration_name = "pl-service-lb-frontend-ip-configuration"
   probe_id                       = azurerm_lb_probe.pl-service-lb-probe.id
 }
 
@@ -266,7 +263,8 @@ resource "azurerm_lb_rule" "pl-endpoint-lb-rule" {
   frontend_port                  = "22"
   backend_port                   = "22"
   backend_address_pool_id        = azurerm_lb_backend_address_pool.pl-endpoint-lb-pool.id
-  frontend_ip_configuration_name = azurerm_public_ip.pl-endpoint-lb-pip.name
+  //frontend_ip_configuration_name = azurerm_public_ip.pl-endpoint-lb-pip.name
+  frontend_ip_configuration_name = "pl-endpoint-lb-frontend-ip-configuration"
   probe_id                       = azurerm_lb_probe.pl-endpoint-lb-probe.id
 }
 
@@ -423,16 +421,11 @@ resource "azurerm_private_endpoint" "pl-endpoint" {
   }
 }
 
-
 //===================================================================
 // Outputs
 //===================================================================
 output "pl-service-lb-pip" {
   value = azurerm_public_ip.pl-service-lb-pip.ip_address
-}
-
-output "pl-endpoint-lb-pip" {
-  value = azurerm_public_ip.pl-endpoint-lb-pip.ip_address
 }
 
 output "pl-service-id" {
@@ -443,21 +436,26 @@ output "pl-endpoint-ip" {
   value = azurerm_private_endpoint.pl-endpoint.private_service_connection.0.private_ip_address
 }
 
+output "pl-endpoint-test-vm" {
+  value = azurerm_public_ip.pl-endpoint-vm-pip.ip_address
+}
+
+/*
 output "pl-service-lb-fe-conf" {
   value = azurerm_lb.pl-endpoint-lb.frontend_ip_configuration
 }
 
+output "pl-endpoint-lb-pip" {
+  value = azurerm_public_ip.pl-endpoint-lb-pip.ip_address
+}
 
-/*
 output "pl-endpoint-nic" {
   value = azurerm_private_endpoint.pl-endpoint
 }
 */
 
 
-output "pl-endpoint-test-vm" {
-  value = azurerm_public_ip.pl-endpoint-vm-pip.ip_address
-}
+
 
 
 
@@ -517,3 +515,112 @@ resource "azurerm_public_ip" "pl-service-vm-pip" {
 // where traffic from the Private Link Service should be routed. 
 // You can use Load Balancer Rules to direct this traffic to appropriate backend 
 // pools where your applications are running.
+
+
+
+
+//===================================================================
+// Application Gateway
+//===================================================================
+
+locals {
+  backend_address_pool_name      = "pl-endpoint-aagw-beap"
+  frontend_port_name             = "pl-endpoint-aagw-feport"
+  frontend_ip_configuration_name = "pl-endpoint-aagw-feip"
+  http_setting_name              = "pl-endpoint-aagw-be-htst"
+  listener_name                  = "pl-endpoint-aagw-httplstn"
+  request_routing_rule_name      = "pl-endpoint-aagw-rqrt"
+  redirect_configuration_name    = "pl-endpoint-aagw-rdrcfg"
+}
+
+resource "azurerm_subnet" "pl-endpoint-subnet-aagw-fe" {
+  name                 = "pl-endpoint-subnet-aagw-fe"
+  resource_group_name  = azurerm_resource_group.example.name
+  virtual_network_name = azurerm_virtual_network.pl-endpoint-network.name
+  address_prefixes     = ["10.0.2.0/24"]
+}
+
+resource "azurerm_network_security_group" "pl-endpoint-nsg-aagw-fe" {
+  name                = "pl-endpoint-nsg-aagw-fe"
+  location            = azurerm_resource_group.example.location
+  resource_group_name = azurerm_resource_group.example.name
+
+  security_rule {
+    name                       = "all-ports"
+    priority                   = 100
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "*"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+}
+
+resource "azurerm_subnet_network_security_group_association" "pl-endpoint-nsg-assc-aagw-fe" {
+  subnet_id                 = azurerm_subnet.pl-endpoint-subnet-aagw-fe.id
+  network_security_group_id = azurerm_network_security_group.pl-endpoint-nsg-aagw-fe.id
+}
+
+resource "azurerm_public_ip" "pl-endpoint-aagw-pip" {
+  name                = "pl-endpoint-aagw-pip"
+  resource_group_name = azurerm_resource_group.example.name
+  location            = azurerm_resource_group.example.location
+  allocation_method   = "Dynamic"
+}
+
+resource "azurerm_application_gateway" "pl-endpoint-aagw" {
+  name                = "pl-endpoint-aagw"
+  resource_group_name = azurerm_resource_group.example.name
+  location            = azurerm_resource_group.example.location
+
+  sku {
+    name     = "Standard_Small"
+    tier     = "Standard"
+    capacity = 2
+  }
+
+  gateway_ip_configuration {
+    name      = "pl-endpoint-aagw-ip-configuration"
+    subnet_id = azurerm_subnet.pl-endpoint-subnet-aagw-fe.id
+  }
+
+  frontend_port {
+    name = local.frontend_port_name
+    port = 80
+  }
+
+  frontend_ip_configuration {
+    name                 = local.frontend_ip_configuration_name
+    public_ip_address_id = azurerm_public_ip.pl-endpoint-aagw-pip.id
+  }
+
+  backend_address_pool {
+    name = local.backend_address_pool_name
+  }
+
+  backend_http_settings {
+    name                  = local.http_setting_name
+    cookie_based_affinity = "Disabled"
+    path                  = "/path1/"
+    port                  = 80
+    protocol              = "Http"
+    request_timeout       = 60
+  }
+
+  http_listener {
+    name                           = local.listener_name
+    frontend_ip_configuration_name = local.frontend_ip_configuration_name
+    frontend_port_name             = local.frontend_port_name
+    protocol                       = "Http"
+  }
+
+  request_routing_rule {
+    name                       = local.request_routing_rule_name
+    rule_type                  = "Basic"
+    http_listener_name         = local.listener_name
+    backend_address_pool_name  = local.backend_address_pool_name
+    backend_http_settings_name = local.http_setting_name
+  }
+}
