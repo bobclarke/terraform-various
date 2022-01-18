@@ -38,7 +38,7 @@ provider "azurerm" {
 // Resource Group
 //===================================================================
 resource "azurerm_resource_group" "example" {
-  name     = "spaniaz-dev-rg"
+  name     = "spaniaz-poc-rg"
   location = "West Europe"
 }
 
@@ -150,11 +150,24 @@ resource "azurerm_lb" "pl-endpoint-lb" {
   location            = azurerm_resource_group.example.location
   resource_group_name = azurerm_resource_group.example.name
 
+  
   frontend_ip_configuration {
     name                 = azurerm_public_ip.pl-endpoint-lb-pip.name
     public_ip_address_id = azurerm_public_ip.pl-endpoint-lb-pip.id
   }
+
+
+/*
+  frontend_ip_configuration {
+    name                            = azurerm_public_ip.pl-endpoint-lb-pip.name
+    private_ip_address_allocation   = "Static"
+    private_ip_address_version      = "IPv4"
+    private_ip_address              = "10.0.1.6"
+    subnet_id                       = azurerm_subnet.pl-endpoint-subnet.id
+  }
+*/
 }
+
 
 //===================================================================
 // Pubic IPs for Load Balancers
@@ -205,11 +218,10 @@ resource "azurerm_lb_backend_address_pool_address" "pl-service-lb-pool-addr" {
   ip_address              = tostring(azurerm_private_endpoint.pl-endpoint.private_service_connection.0.private_ip_address)
 }
 
-
 /*
 resource "azurerm_network_interface_backend_address_pool_association" "pl-endpoint-lb-pool-assc" {
-  network_interface_id    = azurerm_network_interface.pl-endpoint-vm-nic.id
-  ip_configuration_name   = "pl-endpoint-vm-nic-config"
+  network_interface_id    = "/subscriptions/968853fd-f3eb-4840-a1ee-536cfdea8092/resourceGroups/spaniaz-dev-rg/providers/Microsoft.Network/networkInterfaces/pl-endpoint.nic.78076ad1-dd42-4ba0-9606-e0386c41a274"
+  ip_configuration_name   = "privateEndpointIpConfig.101a42be-6f9f-4044-8ed3-0081abacb5e5"
   backend_address_pool_id = azurerm_lb_backend_address_pool.pl-endpoint-lb-pool.id
 }
 */
@@ -431,9 +443,16 @@ output "pl-endpoint-ip" {
   value = azurerm_private_endpoint.pl-endpoint.private_service_connection.0.private_ip_address
 }
 
+output "pl-service-lb-fe-conf" {
+  value = azurerm_lb.pl-endpoint-lb.frontend_ip_configuration
+}
+
+
+/*
 output "pl-endpoint-nic" {
   value = azurerm_private_endpoint.pl-endpoint
 }
+*/
 
 
 output "pl-endpoint-test-vm" {
