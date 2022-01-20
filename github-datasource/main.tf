@@ -1,14 +1,56 @@
+
+//===================================================================
+// vars
+//===================================================================
+variable "subscription_id" {
+  default = "xyz"
+}
+
+variable "client_id" {
+  default = "xyz"
+}
+
+variable "client_secret" {
+  default = "xyz"
+}
+
+variable "tenant_id" {
+  default = "xyz"
+}
+
+variable "admin_password" {
+  default = "xyz"
+}
+
+//===================================================================
+// Provider setup
+//===================================================================
+provider "azurerm" {
+  version = ">= 2.41.0"
+  subscription_id = var.subscription_id
+  client_id       = var.client_id
+  client_secret   = var.client_secret
+  tenant_id       = var.tenant_id
+  features {
+  }
+}
+
+//===================================================================
+// locals
+//===================================================================
 locals {
   dns_ttl                                     = "300"
   azure_location                              = "westeurope"
   cache_enabled                               = "false"
   platform_domain                             = "spanwaf.dentsu.app"
-  frontend_name                               = "wildcard-${replace(local.platform_domain, ".", "-")}"
+  frontend_name                               = "frontend-${replace(local.platform_domain, ".", "-")}"
   backend_pools_send_receive_timeout_seconds  = "30"
-  enabled                                     = 1
+  enabled                                     = true
   resource_group_name                         = "spanwaf-dev-rg"
+  dns_resource_group                          = local.resource_group_name
   name                                        = "spanwaf"
 }
+
 
 //===================================================================
 // AFD
@@ -21,7 +63,7 @@ resource "azurerm_frontdoor" "fd" {
   backend_pools_send_receive_timeout_seconds   = local.backend_pools_send_receive_timeout_seconds
 
   frontend_endpoint {
-    name                              = local.name
+    name                              = local.frontend_name
     host_name                         = "${local.name}.azurefd.net"
     custom_https_provisioning_enabled = false
   }
@@ -45,7 +87,7 @@ resource "azurerm_frontdoor" "fd" {
       host_header = ""
       address     = "10.1.1.10"
       http_port   = 80
-      //https_port  = 443
+      https_port  = 443
     }
 
     load_balancing_name = "http-lb"
@@ -77,7 +119,6 @@ resource "azurerm_frontdoor" "fd" {
 
   depends_on = [
     azurerm_dns_cname_record.dns_record_frontdoor,
-    azurerm_dns_cname_record.dns_record_frontdoor_add,
   ]
 }
 
