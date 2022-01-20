@@ -239,6 +239,13 @@ resource "azurerm_lb_probe" "pl-endpoint-lb-probe" {
   port                = "22"
 }
 
+resource "azurerm_lb_probe" "pl-service-nginx-probe" {
+  resource_group_name = azurerm_resource_group.example.name
+  loadbalancer_id     = azurerm_lb.pl-service-lb.id
+  name                = "nginx-running-probe"
+  port                = "80"
+}
+
 //===================================================================
 // Load Balancer Rules
 //===================================================================
@@ -266,6 +273,19 @@ resource "azurerm_lb_rule" "pl-endpoint-lb-rule" {
   //frontend_ip_configuration_name = azurerm_public_ip.pl-endpoint-lb-pip.name
   frontend_ip_configuration_name = "pl-endpoint-lb-frontend-ip-configuration"
   probe_id                       = azurerm_lb_probe.pl-endpoint-lb-probe.id
+}
+
+resource "azurerm_lb_rule" "pl-service-nginx-rule" {
+  resource_group_name = azurerm_resource_group.example.name
+  loadbalancer_id                = azurerm_lb.pl-service-lb.id
+  name                           = "pl-service-lb-rule2"
+  protocol                       = "Tcp"
+  frontend_port                  = "80"
+  backend_port                   = "80"
+  backend_address_pool_id        = azurerm_lb_backend_address_pool.pl-service-lb-pool.id
+  //frontend_ip_configuration_name = azurerm_public_ip.pl-service-lb-pip.name
+  frontend_ip_configuration_name = "pl-service-lb-frontend-ip-configuration"
+  probe_id                       = azurerm_lb_probe.pl-service-nginx-probe.id
 }
 
 //===================================================================
@@ -522,7 +542,6 @@ resource "azurerm_public_ip" "pl-service-vm-pip" {
 //===================================================================
 // Application Gateway
 //===================================================================
-
 locals {
   backend_address_pool_name      = "pl-endpoint-aagw-beap"
   frontend_port_name             = "pl-endpoint-aagw-feport"
@@ -532,6 +551,7 @@ locals {
   request_routing_rule_name      = "pl-endpoint-aagw-rqrt"
   redirect_configuration_name    = "pl-endpoint-aagw-rdrcfg"
 }
+
 
 resource "azurerm_subnet" "pl-endpoint-subnet-aagw-fe" {
   name                 = "pl-endpoint-subnet-aagw-fe"
@@ -562,6 +582,7 @@ resource "azurerm_subnet_network_security_group_association" "pl-endpoint-nsg-as
   subnet_id                 = azurerm_subnet.pl-endpoint-subnet-aagw-fe.id
   network_security_group_id = azurerm_network_security_group.pl-endpoint-nsg-aagw-fe.id
 }
+
 
 resource "azurerm_public_ip" "pl-endpoint-aagw-pip" {
   name                = "pl-endpoint-aagw-pip"
@@ -603,7 +624,7 @@ resource "azurerm_application_gateway" "pl-endpoint-aagw" {
   backend_http_settings {
     name                  = local.http_setting_name
     cookie_based_affinity = "Disabled"
-    path                  = "/path1/"
+    path                  = ""
     port                  = 80
     protocol              = "Http"
     request_timeout       = 60
