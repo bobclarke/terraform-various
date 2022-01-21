@@ -1,4 +1,13 @@
 //===================================================================
+// Logic
+//===================================================================
+/*  
+ Get the IP for the correct igress controller
+ This will tell you which Front end config to use (i.e many igress controllers use the same LB) 
+*/
+
+
+//===================================================================
 // vars 
 //===================================================================
 variable "subscription_id" {
@@ -45,7 +54,7 @@ provider "kubernetes" {
 
 
 //===================================================================
-// Get ingress IP
+// Get the ingress controller details
 //===================================================================
 data "kubernetes_service" "internal-ingress" {
   metadata {
@@ -54,13 +63,12 @@ data "kubernetes_service" "internal-ingress" {
   }
 }
 
-output "internal-ingress-ip" {
-  value = data.kubernetes_service.internal-ingress.status.0.load_balancer.0.ingress.0.ip
+locals {
+  ingress_ip = data.kubernetes_service.internal-ingress.status.0.load_balancer.0.ingress.0.ip
 }
 
-
 //===================================================================
-// Get the LB and subnet ids (we need these for the private link service)
+// Build a map of Load Balancer front end IP configs keyed on IP address
 //===================================================================
 data "azurerm_lb" "lb" {
   name                = "kubernetes-internal"
@@ -68,50 +76,6 @@ data "azurerm_lb" "lb" {
 }
 
 locals {
-  admin_roles = ["user","admin","guest"]
-  admin_members = ["bob","jon","simon"]
-  
-
-
-  admin_bindings = {
-    for role in local.admin_roles:
-      role => local.admin_members
-  }
-
-
-  ingress_ip = data.kubernetes_service.internal-ingress.status.0.load_balancer.0.ingress.0.ip
-
-
-  
-  test_map = {
-    "foo" = {
-      "bar" = {
-        "gah" = "far"
-      }
-    }
-  }
-
-  ip_map = {
-    for ip in local.test_ips:
-    ip => "bar"
-  }
-  
-  
-  test_ips = ["10.1.1.10","10.1.1.20","10.1.1.30",]
-
-
-  fe_configs = [
-    for fe_config in data.azurerm_lb.lb.frontend_ip_configuration:
-    {
-      "${fe_config.private_ip_address}" = {
-        "details" = {
-          "subnet_id" = fe_config.subnet_id
-          "load_balancer_frontend_ip_configuration_id" = fe_config.id
-        }
-      }
-    }
-  ]
-
   feconfigs = {
     for feconfig in data.azurerm_lb.lb.frontend_ip_configuration:
       "${feconfig.private_ip_address}" => {
@@ -122,66 +86,23 @@ locals {
 }
 
 //===================================================================
-// Find the LB FE config with the same IP as the ingress and get it's id and subnet 
+// Now we can retrieve the FE config and Subnet ID's for this IP 
 //===================================================================
 
+locals {
+  lb_feconfig = local.feconfigs[local.ingress_ip].load_balancer_frontend_ip_configuration_id
+  lb_subnet = local.feconfigs[local.ingress_ip].subnet_id
+}
 
- 
-/* 
-output "dump" {
-  //value               = data.azurerm_lb.lb.frontend_ip_configuration[*].private_ip_address
-  value               = local.fe_configs
+output "subnet" {
+  value               = local.lb_subnet
+}
+
+output "feconfig" {
+  value               = local.lb_feconfig
 }
 
 
-output "match" {
-  value               = local.fe_configs[0]
-}
- */
-
-
-
-output "feconfigs" {
-  value               = local.feconfigs[local.ingress_ip]
-}
-
-
-
-
-
-
-
-
-//===================================================================
-// Notes etc
-//===================================================================
-/* %{ for additionalDomain in local.additionalDomains ~}
-    - port:
-        number: 443
-        name: https-${additionalDomain}-port
-        protocol: HTTPS
-      hosts:
-      - '${additionalDomain}'
-      - '*.${additionalDomain}'
-      tls:
-        credentialName: wildcard-${additionalDomain}-devops-tls
-        mode: SIMPLE
-%{ endfor ~} */
-
-
-
-
-
-
-
-
-
-
- /* 
- LOGIC
- Get the IP for the correct igress controller
- This will tell you which Front end config to use (i.e many igress controllers use the same LB) 
- */
 
 
 
