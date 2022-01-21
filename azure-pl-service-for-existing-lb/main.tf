@@ -1,6 +1,5 @@
-
 //===================================================================
-// vars
+// vars 
 //===================================================================
 variable "subscription_id" {
   default = "xyz"
@@ -22,8 +21,12 @@ variable "admin_password" {
   default = "xyz"
 }
 
+variable "context" {
+  default = "xyz"
+}
+
 //===================================================================
-// Provider setup
+// Provider setup 
 //===================================================================
 provider "azurerm" {
   version = ">= 2.41.0"
@@ -35,101 +38,151 @@ provider "azurerm" {
   }
 }
 
+provider "kubernetes" {
+  config_path    = "~/.kube/config"
+  config_context = var.context
+}
+
+
 //===================================================================
-// locals
+// Get ingress IP
 //===================================================================
+data "kubernetes_service" "internal-ingress" {
+  metadata {
+    name = "nginx-ingress-controller"
+    namespace = "ingress"
+  }
+}
+
+output "internal-ingress-ip" {
+  value = data.kubernetes_service.internal-ingress.status.0.load_balancer.0.ingress.0.ip
+}
+
+
+//===================================================================
+// Get the LB and subnet ids (we need these for the private link service)
+//===================================================================
+data "azurerm_lb" "lb" {
+  name                = "kubernetes-internal"
+  resource_group_name = "MC_eu-az-nft-wal-aks-rg_eu-az-nft-wal_westeurope"
+}
+
 locals {
-  dns_ttl                                     = "300"
-  azure_location                              = "westeurope"
-  cache_enabled                               = "false"
-  platform_domain                             = "spanwaf.dentsu.app"
-  frontend_name                               = "frontend-${replace(local.platform_domain, ".", "-")}"
-  backend_pools_send_receive_timeout_seconds  = "30"
-  enabled                                     = true
-  resource_group_name                         = "spanwaf-dev-rg"
-  dns_resource_group                          = local.resource_group_name
-  name                                        = "spanwaf"
-}
+  admin_roles = ["user","admin","guest"]
+  admin_members = ["bob","jon","simon"]
+  
 
 
-//===================================================================
-// AFD
-//===================================================================
-resource "azurerm_frontdoor" "fd" {
-  count                                        = local.enabled ? 1 : 0
-  name                                         = local.name
-  resource_group_name                          = local.resource_group_name
-  enforce_backend_pools_certificate_name_check = false
-  backend_pools_send_receive_timeout_seconds   = local.backend_pools_send_receive_timeout_seconds
-
-  frontend_endpoint {
-    name                              = local.frontend_name
-    host_name                         = "${local.name}.azurefd.net"
-    custom_https_provisioning_enabled = false
+  admin_bindings = {
+    for role in local.admin_roles:
+      role => local.admin_members
   }
 
-  routing_rule {
-    name               = replace(local.platform_domain, ".", "-")
-    accepted_protocols = ["Http"]
-    patterns_to_match  = ["/*"]
-    frontend_endpoints = [local.frontend_name]
-    forwarding_configuration {
-      forwarding_protocol = "MatchRequest"
-      backend_pool_name   = replace(local.platform_domain, ".", "-")
-      cache_enabled       = local.cache_enabled
+
+  ingress_ip = data.kubernetes_service.internal-ingress.status.0.load_balancer.0.ingress.0.ip
+
+
+  
+  test_map = {
+    "foo" = {
+      "bar" = {
+        "gah" = "far"
+      }
     }
   }
 
-  backend_pool {
-    name = replace(local.platform_domain, ".", "-")
-    backend {
-      enabled     = "true"
-      host_header = ""
-      address     = "10.1.1.10"
-      http_port   = 80
-      https_port  = 443
+  ip_map = {
+    for ip in local.test_ips:
+    ip => "bar"
+  }
+  
+  
+  test_ips = ["10.1.1.10","10.1.1.20","10.1.1.30",]
+
+
+  fe_configs = [
+    for fe_config in data.azurerm_lb.lb.frontend_ip_configuration:
+    {
+      "${fe_config.private_ip_address}" = {
+        "details" = {
+          "subnet_id" = fe_config.subnet_id
+          "load_balancer_frontend_ip_configuration_id" = fe_config.id
+        }
+      }
     }
-
-    load_balancing_name = "http-lb"
-    health_probe_name   = "http-probe"
-  }
-
-
-  // Backend Pool Load Balancing
-  backend_pool_load_balancing {
-    name                            = "http-lb"
-    sample_size                     = "4"
-    successful_samples_required     = "2"
-    additional_latency_milliseconds = "0"
-  }
-
-  // Backend Pool Health Probe
-  backend_pool_health_probe {
-    name                = "http-probe"
-    path                = "/"
-    protocol            = "Http"
-    interval_in_seconds = "255"
-  }
-
-  lifecycle {
-    ignore_changes = [
-      location,
-    ]
-  }
-
-  depends_on = [
-    azurerm_dns_cname_record.dns_record_frontdoor,
   ]
+
+  feconfigs = {
+    for feconfig in data.azurerm_lb.lb.frontend_ip_configuration:
+      "${feconfig.private_ip_address}" => {
+        "subnet_id" = feconfig.subnet_id
+        "load_balancer_frontend_ip_configuration_id" = feconfig.id
+      }
+    }
 }
 
-// Generate the azure records for the environments
-resource "azurerm_dns_cname_record" "dns_record_frontdoor" {
-  count               = local.enabled ? 1 : 0
-  name                = "*"
-  zone_name           = local.platform_domain
-  resource_group_name = local.dns_resource_group
-  ttl                 = local.dns_ttl
-  record              = "${local.name}.azurefd.net"
+//===================================================================
+// Find the LB FE config with the same IP as the ingress and get it's id and subnet 
+//===================================================================
+
+
+ 
+/* 
+output "dump" {
+  //value               = data.azurerm_lb.lb.frontend_ip_configuration[*].private_ip_address
+  value               = local.fe_configs
 }
+
+
+output "match" {
+  value               = local.fe_configs[0]
+}
+ */
+
+
+
+output "feconfigs" {
+  value               = local.feconfigs[local.ingress_ip]
+}
+
+
+
+
+
+
+
+
+//===================================================================
+// Notes etc
+//===================================================================
+/* %{ for additionalDomain in local.additionalDomains ~}
+    - port:
+        number: 443
+        name: https-${additionalDomain}-port
+        protocol: HTTPS
+      hosts:
+      - '${additionalDomain}'
+      - '*.${additionalDomain}'
+      tls:
+        credentialName: wildcard-${additionalDomain}-devops-tls
+        mode: SIMPLE
+%{ endfor ~} */
+
+
+
+
+
+
+
+
+
+
+ /* 
+ LOGIC
+ Get the IP for the correct igress controller
+ This will tell you which Front end config to use (i.e many igress controllers use the same LB) 
+ */
+
+
 
 
