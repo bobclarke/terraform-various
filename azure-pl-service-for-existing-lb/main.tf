@@ -102,6 +102,28 @@ output "feconfig" {
   value               = local.lb_feconfig
 }
 
+//===================================================================
+// Add the PrivateLink Service
+//===================================================================
+resource "azurerm_private_link_service" "pl-service" {
+  name                = "pl-service"
+  location            = "westeurope"
+  resource_group_name = "MC_eu-az-nft-wal-aks-rg_eu-az-nft-wal_westeurope"
+
+  auto_approval_subscription_ids              = [var.subscription_id]
+  visibility_subscription_ids                 = [var.subscription_id]
+
+  nat_ip_configuration {
+    name      = "nat_ip_config"
+    primary   = true
+    subnet_id = local.lb_subnet
+  }
+
+  load_balancer_frontend_ip_configuration_ids = [
+    local.lb_feconfig,
+  ]
+}
+
 
 
 
