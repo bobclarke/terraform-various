@@ -34,6 +34,14 @@ variable "context" {
   default = "xyz"
 }
 
+variable "location" {
+  default = "xyz"
+}
+
+variable "resource_group_name" {
+  default = "xyz"
+}
+
 //===================================================================
 // Provider setup 
 //===================================================================
@@ -63,8 +71,16 @@ data "kubernetes_service" "internal-ingress" {
   }
 }
 
+data "kubernetes_service" "external-ingress" {
+  metadata {
+    name = "external-nginx-ingress-controller"
+    namespace = "ingress-external"
+  }
+}
+
 locals {
-  ingress_ip = data.kubernetes_service.internal-ingress.status.0.load_balancer.0.ingress.0.ip
+  internal_ingress_ip = data.kubernetes_service.internal-ingress.status.0.load_balancer.0.ingress.0.ip
+  external_ingress_ip = data.kubernetes_service.external-ingress.status.0.load_balancer.0.ingress.0.ip
 }
 
 //===================================================================
@@ -90,37 +106,78 @@ locals {
 //===================================================================
 
 locals {
-  lb_feconfig = local.feconfigs[local.ingress_ip].load_balancer_frontend_ip_configuration_id
-  lb_subnet = local.feconfigs[local.ingress_ip].subnet_id
+  internal_lb_feconfig = local.feconfigs[local.internal_ingress_ip].load_balancer_frontend_ip_configuration_id
+  internal_lb_subnet = local.feconfigs[local.internal_ingress_ip].subnet_id
+  external_lb_feconfig = local.feconfigs[local.external_ingress_ip].load_balancer_frontend_ip_configuration_id
+  external_lb_subnet = local.feconfigs[local.external_ingress_ip].subnet_id
+
 }
 
-output "subnet" {
-  value               = local.lb_subnet
+output "feconfigs" {
+  value               = local.feconfigs
 }
 
-output "feconfig" {
-  value               = local.lb_feconfig
+
+output "internal_lb_feconfig" {
+  value               = local.internal_lb_feconfig
 }
+output "internal_lb_subnet" {
+  value               = local.internal_lb_subnet
+}
+output "internal_ingress_ip" {
+  value               = local.internal_ingress_ip 
+}   
+
+output "external_lb_feconfig" {
+  value               = local.external_lb_feconfig
+}
+output "external_lb_subnet" {
+  value               = local.external_lb_subnet
+}
+output "external_ingress_ip" {
+  value               = local.external_ingress_ip 
+}   
+
 
 //===================================================================
-// Add the PrivateLink Service
+// Add the PrivateLink Services
 //===================================================================
-resource "azurerm_private_link_service" "pl-service" {
-  name                = "pl-service"
+
+resource "azurerm_private_link_service" "internal-pl-service" {
+  name                = "internal-pl-service"
   location            = "westeurope"
   resource_group_name = "MC_eu-az-nft-wal-aks-rg_eu-az-nft-wal_westeurope"
 
-  auto_approval_subscription_ids              = [var.subscription_id]
-  visibility_subscription_ids                 = [var.subscription_id]
+  auto_approval_subscription_ids              = ["968853fd-f3eb-4840-a1ee-536cfdea8092"]
+  visibility_subscription_ids                 = ["968853fd-f3eb-4840-a1ee-536cfdea8092"]
 
   nat_ip_configuration {
     name      = "nat_ip_config"
     primary   = true
-    subnet_id = local.lb_subnet
+    subnet_id = local.internal_lb_subnet
   }
 
   load_balancer_frontend_ip_configuration_ids = [
-    local.lb_feconfig,
+    local.internal_lb_feconfig,
+  ]
+}
+
+resource "azurerm_private_link_service" "external-pl-service" {
+  name                = "external-pl-service"
+  location            = "westeurope"
+  resource_group_name = "MC_eu-az-nft-wal-aks-rg_eu-az-nft-wal_westeurope"
+
+  auto_approval_subscription_ids              = ["968853fd-f3eb-4840-a1ee-536cfdea8092"]
+  visibility_subscription_ids                 = ["968853fd-f3eb-4840-a1ee-536cfdea8092"]
+
+  nat_ip_configuration {
+    name      = "nat_ip_config"
+    primary   = true
+    subnet_id = local.external_lb_subnet
+  }
+
+  load_balancer_frontend_ip_configuration_ids = [
+    local.external_lb_feconfig,
   ]
 }
 
