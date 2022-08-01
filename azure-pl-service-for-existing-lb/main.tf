@@ -47,6 +47,7 @@ variable "resource_group_name" {
 //===================================================================
 provider "azurerm" {
   version = ">= 2.41.0"
+  //version = "1.11.2"
   subscription_id = var.subscription_id
   client_id       = var.client_id
   client_secret   = var.client_secret
@@ -58,6 +59,7 @@ provider "azurerm" {
 provider "kubernetes" {
   config_path    = "~/.kube/config"
   config_context = var.context
+  version = "1.11.2"
 }
 
 
@@ -79,8 +81,9 @@ data "kubernetes_service" "external-ingress" {
 }
 
 locals {
-  internal_ingress_ip = data.kubernetes_service.internal-ingress.status.0.load_balancer.0.ingress.0.ip
-  external_ingress_ip = data.kubernetes_service.external-ingress.status.0.load_balancer.0.ingress.0.ip
+  //internal_ingress_ip = data.kubernetes_service.internal-ingress.status.0.load_balancer.0.ingress.0.ip
+  //external_ingress_ip = data.kubernetes_service.external-ingress.status.0.load_balancer.0.ingress.0.ip
+  iigw_svc_ip =           data.kubernetes_service.istio_gateway.spec[0].external_ips
 }
 
 //===================================================================
