@@ -6,12 +6,19 @@ variable "envwhitelistmap" {
 }
 
 locals {
+<<<<<<< HEAD
    a = substr(var.envwhitelistmap.ips, 1, length(var.envwhitelistmap.ips) - 2) 
    envwhitelist = regexall("\\d+.\\d+.\\d+.\\d+/\\d+", var.envwhitelistmap.ips)
    rendered_config = templatefile("${path.module}/config/istio.aks.yaml", { ip_addrs = local.envwhitelist } )
 
 
    
+=======
+
+   
+   envwhitelist = regexall("\\d+.\\d+.\\d+.\\d+/\\d+", var.envwhitelistmap.ips)
+   rendered_config = templatefile("${path.module}/config/istio.aks.yaml", { ip_addrs = var.envwhitelistarry } )
+>>>>>>> 7a38e6bfc6b7c3943bb00cfc8c9099ae5e51c4fd
 }
 
 
@@ -20,6 +27,7 @@ output "envwhitelist_rendered" {
     //value = local.envwhitelist
 }
 
+<<<<<<< HEAD
 
 
 resource "helm_release" "istio-config" {
@@ -45,4 +53,6 @@ resource "helm_release" "istio-config" {
   //depends_on      = [helm_release.istio-operator]
 }
 
+=======
+>>>>>>> 7a38e6bfc6b7c3943bb00cfc8c9099ae5e51c4fd
 
