@@ -1,0 +1,15 @@
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: test-gateway
+  namespace: default
+spec:
+  selector:
+    istio: testgateay
+  servers:
+    - port:
+        name: test 
+        number: 10000
+        protocol: TCP
+      hosts:
+        - "test"
