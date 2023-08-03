@@ -1,4 +1,4 @@
 variable "github_token" {
   type = string
-  default = "foo"
+  default = "bar"
 }
