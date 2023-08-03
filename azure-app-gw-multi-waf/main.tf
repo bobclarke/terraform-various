@@ -22,34 +22,21 @@ variable "admin_password" {
 }
 
 variable "resource_group" {
-  default = "xyz"
+  default = "span-aagw-waf-poc"
 }
 
 
 //===================================================================
 // Provider setup 
 //===================================================================
-# provider "azurerm" {
-#   version = ">= 2.41.0"
-#   subscription_id = var.subscription_id
-#   client_id       = var.client_id
-#   client_secret   = var.client_secret
-#   tenant_id       = var.tenant_id
-#   features {
-#   }
-# }
-
-terraform {
-  required_providers {
-    azurerm = {
-      source  = "hashicorp/azurerm"
-      version = "3.33.0"
-    }
-  }
-}
-
 provider "azurerm" {
-  features {}
+   version = ">= 2.41.0"
+   subscription_id = var.subscription_id
+   client_id       = var.client_id
+   client_secret   = var.client_secret
+   tenant_id       = var.tenant_id
+   features {
+   }
 }
 
 
@@ -62,12 +49,11 @@ resource "azurerm_resource_group" "example" {
 }
 
 
-
 //===================================================================
 // VNETs
 //===================================================================
 resource "azurerm_virtual_network" "network" {
-  name                = "pl-endpoint-network"
+  name                = "network"
   address_space       = ["10.0.0.0/16"]
   location            = azurerm_resource_group.example.location
   resource_group_name = azurerm_resource_group.example.name
@@ -80,7 +66,7 @@ resource "azurerm_virtual_network" "network" {
 resource "azurerm_subnet" "subnet" {
   name                 = "subnet"
   resource_group_name  = azurerm_resource_group.example.name
-  virtual_network_name = azurerm_virtual_network.pl-endpoint-network.name
+  virtual_network_name = azurerm_virtual_network.network.name
   address_prefixes     = ["10.0.1.0/24"]
 
   enforce_private_link_endpoint_network_policies = true
@@ -100,15 +86,15 @@ locals {
   redirect_configuration_name    = "aagw-redirect"
 }
 
-resource "azurerm_subnet" "pl-endpoint-subnet-aagw-fe" {
-  name                 = "pl-endpoint-subnet-aagw-fe"
+resource "azurerm_subnet" "subnet-aagw-fe" {
+  name                 = "subnet-aagw-fe"
   resource_group_name  = azurerm_resource_group.example.name
-  virtual_network_name = azurerm_virtual_network.pl-endpoint-network.name
+  virtual_network_name = azurerm_virtual_network.network.name
   address_prefixes     = ["10.0.2.0/24"]
 }
 
-resource "azurerm_network_security_group" "pl-endpoint-nsg-aagw-fe" {
-  name                = "pl-endpoint-nsg-aagw-fe"
+resource "azurerm_network_security_group" "nsg-aagw-fe" {
+  name                = "nsg-aagw-fe"
   location            = azurerm_resource_group.example.location
   resource_group_name = azurerm_resource_group.example.name
 
@@ -126,31 +112,31 @@ resource "azurerm_network_security_group" "pl-endpoint-nsg-aagw-fe" {
 }
 
 resource "azurerm_subnet_network_security_group_association" "nsg-assc-aagw-fe" {
-  subnet_id                 = azurerm_subnet.pl-endpoint-subnet-aagw-fe.id
-  network_security_group_id = azurerm_network_security_group.pl-endpoint-nsg-aagw-fe.id
+  subnet_id                 = azurerm_subnet.subnet-aagw-fe.id
+  network_security_group_id = azurerm_network_security_group.nsg-aagw-fe.id
 }
 
-resource "azurerm_public_ip" "pl-endpoint-aagw-pip" {
-  name                = "pl-endpoint-aagw-pip"
+resource "azurerm_public_ip" "aagw-pip" {
+  name                = "aagw-pip"
   resource_group_name = azurerm_resource_group.example.name
   location            = azurerm_resource_group.example.location
   allocation_method   = "Dynamic"
 }
 
-resource "azurerm_application_gateway" "pl-endpoint-aagw" {
+resource "azurerm_application_gateway" "aagw" {
   name                = "aagw"
   resource_group_name = azurerm_resource_group.example.name
   location            = azurerm_resource_group.example.location
 
   sku {
-    name     = "Standard_Small"
-    tier     = "Standard"
+    name     = "WAF_v2"
+    tier     = "WAF_v2"
     capacity = 2
   }
 
   gateway_ip_configuration {
-    name      = "pl-endpoint-aagw-ip-configuration"
-    subnet_id = azurerm_subnet.pl-endpoint-subnet-aagw-fe.id
+    name      = "aagw-ip-configuration"
+    subnet_id = azurerm_subnet.subnet-aagw-fe.id
   }
 
   frontend_port {
@@ -160,7 +146,7 @@ resource "azurerm_application_gateway" "pl-endpoint-aagw" {
 
   frontend_ip_configuration {
     name                 = local.frontend_ip_configuration_name
-    public_ip_address_id = azurerm_public_ip.pl-endpoint-aagw-pip.id
+    public_ip_address_id = azurerm_public_ip.aagw-pip.id
   }
 
   backend_address_pool {
@@ -181,6 +167,7 @@ resource "azurerm_application_gateway" "pl-endpoint-aagw" {
     frontend_ip_configuration_name = local.frontend_ip_configuration_name
     frontend_port_name             = local.frontend_port_name
     protocol                       = "Http"
+    //firewall_policy_id             = "/subscriptions/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx/resourceGroups/span-aagw-waf-poc/providers/Microsoft.Network/applicationGatewayWebApplicationFirewallPolicies/wafpolicy"
   }
 
   request_routing_rule {
@@ -189,6 +176,7 @@ resource "azurerm_application_gateway" "pl-endpoint-aagw" {
     http_listener_name         = local.listener_name
     backend_address_pool_name  = local.backend_address_pool_name
     backend_http_settings_name = local.http_setting_name
+    priority                   = 10
   }
 }
 
